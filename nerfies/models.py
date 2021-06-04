@@ -16,7 +16,8 @@
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from flax import linen as nn
-import frozendict
+from flax.core.frozen_dict import FrozenDict
+# import frozendict
 from jax import random
 import jax.numpy as jnp
 
@@ -106,7 +107,7 @@ class NerfModel(nn.Module):
   use_warp: bool = False
   use_warp_jacobian: bool = False
   use_weights: bool = False
-  warp_kwargs: Mapping[str, Any] = frozendict.frozendict()
+  warp_kwargs: Mapping[str, Any] = FrozenDict()
 
   metadata_encoded: bool = False
 
