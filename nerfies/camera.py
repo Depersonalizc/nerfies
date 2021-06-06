@@ -220,7 +220,8 @@ class Camera:
           p2=self.tangential_distortion[1])
 
     dirs = jnp.stack([x, y, jnp.ones_like(x)], axis=-1)
-    return dirs / jnp.linalg.norm(dirs, axis=-1, keepdims=True)
+#     return dirs / jnp.linalg.norm(dirs, axis=-1, keepdims=True)
+    return dirs
 
   def pixels_to_rays(self,
                      pixels: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
