@@ -204,7 +204,7 @@ class Camera:
     return self.orientation[2, :]
 
   def pixel_to_local_rays(self, pixels: jnp.ndarray):
-    """Returns the local ray directions for the provided pixels."""
+    """Returns the local ray directions (z = -1) for the provided pixels."""
     y = ((pixels[..., 1] - self.principal_point_y) / self.scale_factor_y)
     x = ((pixels[..., 0] - self.principal_point_x - y * self.skew) /
          self.scale_factor_x)
@@ -220,7 +220,7 @@ class Camera:
           p2=self.tangential_distortion[1])
 
     dirs = jnp.stack([x, y, jnp.ones_like(x)], axis=-1)
-#     return dirs / jnp.linalg.norm(dirs, axis=-1, keepdims=True)
+    # return dirs / jnp.linalg.norm(dirs, axis=-1, keepdims=True)
     return dirs
 
   def pixels_to_rays(self,
@@ -231,7 +231,7 @@ class Camera:
       pixels: [A1, ..., An, 2] tensor or np.array containing 2d pixel positions.
 
     Returns:
-        An array containing the normalized ray directions in world coordinates.
+        An array containing the tip-aligned ray directions in world coordinates.
     """
     if pixels.shape[-1] != 2:
       raise ValueError('The last dimension of pixels must be 2.')
@@ -246,8 +246,7 @@ class Camera:
     rays_dir = self.orientation.T @ local_rays_dir[..., jnp.newaxis]
     rays_dir = jnp.squeeze(rays_dir, axis=-1)
 
-    # Normalize rays.
-    rays_dir /= jnp.linalg.norm(rays_dir, axis=-1, keepdims=True)
+    # rays_dir /= jnp.linalg.norm(rays_dir, axis=-1, keepdims=True)
     rays_dir = rays_dir.reshape((*batch_shape, 3))
     return rays_dir
 
