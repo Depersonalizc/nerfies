@@ -62,7 +62,7 @@ class MLP(nn.Module):
   hidden_activation: types.Activation = nn.relu
   output_init: Optional[types.Initializer] = None
   output_channels: int = 0
-  output_activation: Optional[types.Activation] = lambda x: x
+  output_activation: Optional[types.Activation] = None
   use_bias: bool = True
   skips: Tuple[int] = tuple()
 
@@ -91,6 +91,83 @@ class MLP(nn.Module):
         x = self.output_activation(x)
 
     return x
+
+
+class AmbientField(nn.Module):
+  """Network that predicts ambient slicing surface.
+
+  Attributes:
+    points_encoder: the positional encoder for the points.
+    metadata_encoder: an encoder for metadata.
+    alpha: the alpha for the positional encoding.
+    skips: the index of the layers with skip connections.
+    depth: the depth of the network excluding the output layer.
+    hidden_channels: the width of the network hidden layers.
+    activation: the activation for each layer.
+    metadata_encoded: whether the metadata parameter is pre-encoded or not.
+    hidden_initializer: the initializer for the hidden layers.
+    output_initializer: the initializer for the last output layer.
+  """
+  num_freqs: int
+  num_embeddings: int
+  num_embedding_features: int
+  max_freq_log2: Optional[int] = None
+
+  skips: Iterable[int] = (4,)
+  depth: int = 6
+  hidden_channels: int = 64
+  activation: types.Activation = nn.relu
+  hidden_init: types.Initializer = nn.initializers.xavier_uniform()
+  output_init: types.Initializer = nn.initializers.normal(stddev=1e-5)
+
+  def setup(self):
+    self.points_encoder = modules.AnnealedSinusoidalEncoder(
+        num_freqs=self.num_freqs, max_freq_log2=self.max_freq_log2)
+    self.metadata_encoder = glo.GloEncoder(
+        num_embeddings=self.num_embeddings,
+        features=self.num_embedding_features)
+    # Note that this must be done this way instead of using mutable list
+    # operations.
+    # See https://github.com/google/flax/issues/524.
+    # pylint: disable=g-complex-comprehension
+    # As per paper, higher dims does not seem to improve performance.
+    ambient_dims = 2  
+    self.mlp = MLP(
+        width=self.hidden_channels,
+        depth=self.depth,
+        skips=self.skips,
+        hidden_init=self.hidden_init,
+        output_init=self.output_init,
+        output_channels=ambient_dims)
+
+  def __call__(self,
+               points: jnp.ndarray,
+               metadata: jnp.ndarray,
+               alpha: Optional[float] = None,
+               metadata_encoded: bool = False):
+    """Predict ambient dims from given points.
+
+    Args:
+      points: the points to warp.
+      metadata: metadata indices if metadata_encoded is False 
+                                 else pre-encoded metadata.
+      alpha: the alpha value for the positional encoding.
+      return_jacobian: if True compute and return the Jacobian of the warp.
+      metadata_encoded: if True assumes the metadata is already encoded.
+
+    Returns:
+      The warped points and the Jacobian of the warp if `return_jacobian` is
+        True.
+    """
+    points_embed = self.points_encoder(points, alpha=alpha)
+    metadata_embed = (metadata
+                      if metadata_encoded
+                      else self.metadata_encoder(metadata))
+    inputs = jnp.concatenate([points_embed, metadata_embed], axis=-1)
+    ambient_w = self.mlp(inputs)
+
+    return ambient_w
+
 
 
 class TranslationField(nn.Module):
@@ -168,8 +245,8 @@ class TranslationField(nn.Module):
 
     Args:
       points: the points to warp.
-      metadata: metadata indices if metadata_encoded is False else pre-encoded
-        metadata.
+      metadata: metadata indices if metadata_encoded is False 
+                                 else pre-encoded metadata.
       alpha: the alpha value for the positional encoding.
       return_jacobian: if True compute and return the Jacobian of the warp.
       metadata_encoded: if True assumes the metadata is already encoded.
@@ -315,8 +392,8 @@ class SE3Field(nn.Module):
 
     Args:
       points: the points to warp.
-      metadata: metadata indices if metadata_encoded is False else pre-encoded
-        metadata.
+      metadata: metadata indices if metadata_encoded is False 
+                                 else pre-encoded metadata.
       alpha: the alpha value for the positional encoding.
       return_jacobian: if True compute and return the Jacobian of the warp.
       metadata_encoded: if True assumes the metadata is already encoded.
