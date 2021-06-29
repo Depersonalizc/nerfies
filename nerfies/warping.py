@@ -152,12 +152,10 @@ class AmbientField(nn.Module):
       metadata: metadata indices if metadata_encoded is False 
                                  else pre-encoded metadata.
       alpha: the alpha value for the positional encoding.
-      return_jacobian: if True compute and return the Jacobian of the warp.
       metadata_encoded: if True assumes the metadata is already encoded.
 
     Returns:
-      The warped points and the Jacobian of the warp if `return_jacobian` is
-        True.
+      Ambient w to feed into the template nerf
     """
     points_embed = self.points_encoder(points, alpha=alpha)
     metadata_embed = (metadata
