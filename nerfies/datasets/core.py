@@ -75,7 +75,7 @@ def camera_to_rays(
   Returns:
     A dictionary of rays. Contains:
       `origins`: the origin of each ray.
-      `directions`: unit vectors representing the direction of each ray.
+      `directions`: Tip-aligend (unnormalized) direction of each ray.
       `pixels`: the pixel centers of each ray.
   """
   camera = camera.copy()
