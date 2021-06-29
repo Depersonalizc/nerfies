@@ -33,8 +33,8 @@ class NerfMLP(nn.Module):
     nerf_condition_width: int, the width of the second part of MLP.
     activation: function, the activation function used in the MLP.
     skips: which layers to add skip layers to.
-    alpha_channels: int, the number of alpha_channelss.
-    rgb_channels: int, the number of rgb_channelss.
+    alpha_channels: int, the number of output alpha_channels.
+    rgb_channels: int, the number of output rgb_channels.
   """
   nerf_trunk_depth: int = 8
   nerf_trunk_width: int = 256
@@ -74,6 +74,7 @@ class NerfMLP(nn.Module):
       if i in self.skips:
         x = jnp.concatenate([inputs, x], axis=-1)
     alpha = dense(self.alpha_channels, name='alpha_logits')(x)
+
     if condition is not None:
       # Output of the first part of MLP.
       bottleneck = dense(self.nerf_trunk_width, name='bottleneck')(x)
@@ -89,11 +90,12 @@ class NerfMLP(nn.Module):
       for i in range(self.nerf_condition_depth):
         x = dense(self.nerf_condition_width, name=f'condition_{i}')(x)
         x = self.activation(x)
+
     rgb = dense(self.rgb_channels, name='rgb_logits')(x)
     return {
         'rgb': rgb.reshape((-1, num_samples, self.rgb_channels)),
         'alpha': alpha.reshape((-1, num_samples, self.alpha_channels)),
-    }
+    } # (batch, num_samples, C)
 
 
 class SinusoidalEncoder(nn.Module):
@@ -124,16 +126,17 @@ class SinusoidalEncoder(nn.Module):
     """A vectorized sinusoidal encoding.
 
     Args:
-      x: the input features to encode.
+      x: the input features to encode. Shape (C,)
       alpha: a dummy argument for API compatibility.
 
     Returns:
       A tensor containing the encoded features.
     """
+    x_scaled = self.scale * x
     if self.num_freqs == 0:
-      return x
+      return x_scaled
 
-    x_expanded = jnp.expand_dims(x, axis=-2)  # (1, C).
+    x_expanded = x[None, :] # (1, C)
     # Will be broadcasted to shape (F, C).
     angles = self.scale * x_expanded * self.freqs
 
@@ -147,7 +150,7 @@ class SinusoidalEncoder(nn.Module):
 
     # Prepend the original signal for the identity.
     if self.use_identity:
-      features = jnp.concatenate([x, features], axis=-1)
+      features = jnp.concatenate([x_scaled, features])
     return features
 
 
@@ -156,33 +159,46 @@ class AnnealedSinusoidalEncoder(nn.Module):
   num_freqs: int
   max_freq_log2: Optional[int] = None
   scale: float = 1.0
+  use_identity: bool = True
 
   @nn.compact
   def __call__(self, x, alpha):
+    """A vectorized annealed sinusoidal encoding.
+
+    Args:
+      x: the input features to encode. Shape (C,)
+      alpha: Alpha for the easing window.
+
+    Returns:
+      A tensor of the encoded features after alpha-annealation.
+    """
+
+    x_scaled = self.scale * x
     if alpha is None:
       raise ValueError('alpha must be specified.')
     if self.num_freqs == 0:
-      return x
+      return x_scaled
 
     num_channels = x.shape[-1]
 
     base_encoder = SinusoidalEncoder(
         num_freqs=self.num_freqs,
         max_freq_log2=self.max_freq_log2,
-        scale=self.scale)
+        scale=self.scale,
+        use_identity=False)
     features = base_encoder(x)
-    identity, features = jnp.split(features, (x.shape[-1],), axis=-1)
 
     # Apply the window by broadcasting to save on memory.
     features = jnp.reshape(features, (-1, 2, num_channels))
     window = self.cosine_easing_window(self.num_freqs, alpha)
     window = jnp.reshape(window, (-1, 1, 1))
     features = window * features
+    features = features.flatten()
 
-    return jnp.concatenate([
-        identity,
-        features.flatten(),
-    ], axis=-1)
+    # Prepend the original signal for the identity.
+    if self.use_identity:
+      return jnp.concatenate([x_scaled, features])
+    return features
 
   @classmethod
   def cosine_easing_window(cls, num_freqs, alpha):
