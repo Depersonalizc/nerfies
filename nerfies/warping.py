@@ -38,6 +38,8 @@ def create_warp_field(
     warp_field_cls = TranslationField
   elif field_type == 'se3':
     warp_field_cls = SE3Field
+  elif field_type == 'ambient':
+    warp_field_cls = AmbientField
   else:
     raise ValueError(f'Unknown warp field type: {field_type!r}')
 
@@ -94,7 +96,7 @@ class MLP(nn.Module):
 
 
 class AmbientField(nn.Module):
-  """Network that predicts ambient slicing surface.
+  """Network that predicts ambient coordinates.
 
   Attributes:
     points_encoder: the positional encoder for the points.
@@ -140,29 +142,45 @@ class AmbientField(nn.Module):
         output_init=self.output_init,
         output_channels=ambient_dims)
 
-  def __call__(self,
-               points: jnp.ndarray,
-               metadata: jnp.ndarray,
-               alpha: Optional[float] = None,
-               metadata_encoded: bool = False):
-    """Predict ambient dims from given points.
-
-    Args:
-      points: the points to warp.
-      metadata: metadata indices if metadata_encoded is False 
-                                 else pre-encoded metadata.
-      alpha: the alpha value for the positional encoding.
-      metadata_encoded: if True assumes the metadata is already encoded.
-
-    Returns:
-      Ambient w to feed into the template nerf
-    """
+  def get_ambient(self,
+                  points: jnp.ndarray,
+                  metadata: jnp.ndarray,
+                  alpha: Optional[float] = None,
+                  metadata_encoded: bool = False):
     points_embed = self.points_encoder(points, alpha=alpha)
     metadata_embed = (metadata
                       if metadata_encoded
                       else self.metadata_encoder(metadata))
     inputs = jnp.concatenate([points_embed, metadata_embed], axis=-1)
     ambient_w = self.mlp(inputs)
+
+    return ambient_w
+
+  def __call__(self,
+               points: jnp.ndarray,
+               metadata: jnp.ndarray,
+               alpha: Optional[float] = None,
+               return_jacobian: bool = False,
+               metadata_encoded: bool = False):
+    """Predict ambient coordinates w from given points.
+
+    Args:
+      points: the points to query ambient coordinates w.
+      metadata: metadata indices if metadata_encoded is False 
+                                 else pre-encoded metadata.
+      alpha: the alpha value for the positional encoding.
+      metadata_encoded: if True assumes the metadata is already encoded.
+
+    Returns:
+      Ambient coordinates w to feed into the template nerf
+    """
+    ambient_w = self.get_ambient(
+        points, metadata, alpha, metadata_encoded)
+
+    if return_jacobian:
+      jac_fn = jax.jacfwd(self.get_ambient, argnums=0)
+      jac = jac_fn(points, metadata, alpha, metadata_encoded)
+      return ambient_w, jac
 
     return ambient_w
 
