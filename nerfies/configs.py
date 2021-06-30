@@ -91,6 +91,16 @@ class ModelConfig:
   # The number of dimensions for the camera metadata.
   camera_metadata_dims: int = 2
 
+  # Whether to use the ambient field.
+  use_ambient: bool = False
+  # The number of frequencies for the ambient field.
+  # x ------> gamma(x) ------> w
+  num_ambient_freqs: int = 6
+  # The number of dimensions for the ambient metadata.
+  num_ambient_features: int = 6
+  # The number of ambient dimensions (Default: w1, w2).
+  num_ambient_dims: int = 2
+
   # Whether to use the warp field.
   use_warp: bool = False
   # The number of frequencies for the warp field.
@@ -98,9 +108,11 @@ class ModelConfig:
   # The number of dimensions for the warp metadata.
   num_warp_features: int = 8
   # The type of warp field to use. One of: 'translation', or 'se3'.
-  warp_field_type: str = 'translation'
+  warp_field_type: str = 'se3'
   # Additional keyword arguments to pass to the warp field.
   warp_kwargs: Mapping[str, Any] = FrozenDict()
+  # Additional keyword arguments to pass to the ambient field.
+  ambient_kwargs: Mapping[str, Any] = FrozenDict()
 
 
 @gin.configurable()
