@@ -90,8 +90,9 @@ def volumetric_rendering(raw,
 
   Returns:
     rgb: jnp.ndarray(float32), [batch_size, 3].
-    depth: jnp.ndarray(float32), [batch_size].
-    acc: jnp.ndarray(float32), [batch_size].
+    exp_depth: jnp.ndarray(float32), [batch_size], expected depth.
+    med_depth: jnp.ndarray(float32), [batch_size], median depth
+    acc: jnp.ndarray(float32), [batch_size], accumulated opacity
     weights: jnp.ndarray(float32), [batch_size, num_coarse_samples]
   """
   rgb = nn.sigmoid(raw['rgb'])
