@@ -117,12 +117,35 @@ def prepare_tf_data_unbatched(xs):
 
 
 def dataset_from_dict(data_dict, rng, shuffle=False, flatten=False):
-  """Crates a dataset from a rays dictionary."""
+  """
+  Crates a dataset from a rays dictionary.
+  
+  Structure of a typical dictionary:
+    directions: (149, 480, 272, 3)      (#examples, H, W, C)
+    origins:    (149, 480, 272, 3)
+    pixels:     (149, 480, 272, 2)
+    rgb:        (149, 480, 272, 3)
+
+    metadata:
+      appearance: (149,)      (# examples)
+      warp:       (149,)
+  
+  If flatten, output (each item is a ray)
+    directions: (#num_rays, 3)
+    origins:    (#num_rays, 3)
+    pixels:     (#num_rays, 2)
+    rgb:        (#num_rays, 3)
+
+    metadata:
+      appearance: (#num_rays, 1)
+      warp:       (#num_rays, 1)
+
+  """
   num_examples = data_dict['origins'].shape[0]
   heights = [x.shape[0] for x in data_dict['origins']]
   widths = [x.shape[1] for x in data_dict['origins']]
 
-  # Broadcast appearance ID to match ray shapes.
+  # Broadcast metadata to match ray shapes. (#examples, H, W, 1)
   if 'metadata' in data_dict:
     for metadata_key, metadata in data_dict['metadata'].items():
       data_dict['metadata'][metadata_key] = np.asarray([
@@ -153,6 +176,16 @@ def dataset_from_dict(data_dict, rng, shuffle=False, flatten=False):
   out_dict = {}
   for key, value in data_dict.items():
     out_dict[key] = tree_util.tree_map(_prepare_array, value)
+
+  def print_dict(d, fun=lambda x: x.shape):
+    for k, v in d.items():
+      if isinstance(v, dict):
+        print(f'\n{k}:')
+        print_dict(v, fun)
+      else:
+        print(f'{k}: {fun(v)}')
+    print()
+  print_dict(out_dict)
 
   return tf.data.Dataset.from_tensor_slices(out_dict)
 
@@ -279,8 +312,8 @@ class DataSource(abc.ABC):
   def parallel_get_items(self, item_ids, scale_factor=1.0):
     """Load data dictionaries indexed by indices in parallel."""
     load_fn = functools.partial(self.get_item, scale_factor=scale_factor)
-    data_list = utils.parallel_map(load_fn, item_ids)
-    data_dict = utils.tree_collate(data_list)
+    data_list = utils.parallel_map(load_fn, item_ids) # [{k: (*shape)}]
+    data_dict = utils.tree_collate(data_list) # {k: (#item_ids, *shape)}
     return data_dict
 
   def create_cameras_dataset(
@@ -299,13 +332,18 @@ class DataSource(abc.ABC):
   def create_dataset(
       self, item_ids, flatten=False, shuffle=False) -> tf.data.Dataset:
     """Create a Tensorflow Dataset from a data dictionary."""
+
     logging.info('*** Creating a dataset with %d items.', len(item_ids))
+    
+    # each value of the dict has shape (#item_ids, H, W, C)
+    # metadata has shape (#item_ids,)
     data_dict = self.parallel_get_items(item_ids)
+
     return dataset_from_dict(data_dict,
                              rng=self.rng,
                              flatten=flatten,
                              shuffle=shuffle)
-
+  ###!!!
   def create_iterator(self,
                       item_ids,
                       batch_size: int,
