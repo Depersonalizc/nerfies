@@ -78,7 +78,9 @@ def volumetric_rendering(raw,
   """Volumetric Rendering Function.
 
   Args:
-    raw: jnp.ndarray(float32), [batch_size, num_coarse_samples, 4].
+    raw: dict(str: jnp.ndarray(float)),
+         {'rgb'  : (device_batch, num_coarse_samples, 3)
+          'alpha': (device_batch, num_coarse_samples, 1)}.
     z_vals: jnp.ndarray(float32), [batch_size, num_coarse_samples].
     dirs: jnp.ndarray(float32), [batch_size, 3].
     use_white_background: bool.
