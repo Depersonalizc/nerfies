@@ -230,7 +230,7 @@ class NerfModel(nn.Module):
     if 'viewdirs' in rays_dict:             # (device_batch, 3)
       viewdirs = rays_dict['viewdirs']
     else:  # viewdirs are normalized rays_d
-      viewdirs = directions
+      viewdirs = directions / jnp.linalg.norm(directions, axis=-1, keepdims=True)
 
     # -------------- COARSE MODEL --------------
     # 1. Stratified sampling along rays
