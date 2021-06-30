@@ -266,6 +266,7 @@ class NerfModel(nn.Module):
         warp_latent = warp_ret['latent']
 
     # 2.5 Predict ambient coordinates.
+    #     - ambient_w should have shape (device_batch, num_coarse_samples, 2)
     if self.use_ambient:
       if self.sep_ambient_latent: # TODO: use own embedding
         pass
@@ -275,7 +276,6 @@ class NerfModel(nn.Module):
             warp_alpha,           # TODO: Should have own alpha 
             True, False, False)   
       ambient_w = ambient_ret['ambient_w']
-      print(ambient_w.shape)
 
     # 3. Apply postional encoding to (warpped) points.
     #    - points_embed.shape: (device_batch, num_coarse_samples, embedded_dims)
@@ -345,8 +345,9 @@ class NerfModel(nn.Module):
     # --------------- FINE MODEL ---------------
     if self.num_fine_samples > 0:
       # 1. Hierarchical sampling along rays based on coarse weights
-      #    - z_vals.shape: (device_batch, num_fine_samples,  )
-      #    - points.shape: (device_batch, num_fine_samples, 3)
+      #    - z_vals.shape: (device_batch, N,  )
+      #    - points.shape: (device_batch, N, 3)
+      #    - N = num_coarse_samples + num_fine_samples
       z_vals_mid = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
       z_vals, points = model_utils.sample_pdf(
           self.make_rng('fine'),
@@ -360,7 +361,7 @@ class NerfModel(nn.Module):
       )
       
       # 2. Apply warping to points.
-      #    - points.shape: (device_batch, num_fine_samples, 3)
+      #    - points.shape: (device_batch, N, 3)
       if self.use_warp and use_warp:
         metadata_channels = self.num_warp_features if metadata_encoded else 1
         warp_metadata = jnp.broadcast_to(
@@ -384,19 +385,18 @@ class NerfModel(nn.Module):
               warp_alpha,
               True, False, False)   # TODO: Should have own alpha 
         ambient_w = ambient_ret['ambient_w']
-        print(ambient_w.shape)
       
       # 3. Apply postional encoding to (warpped) points.
-      #    - points_embed.shape: (device_batch, num_fine_samples, embedded_dims)
-      #    - point_endcoder vmapped to first 2 dims (device_batch, num_fine_samples)
+      #    - points_embed.shape: (device_batch, N, embedded_dims)
+      #    - point_endcoder vmapped to first 2 dims (device_batch, N)
       points_embed = self.point_encoder(points)
 
       # 4. Append condition inputs (encoded viewdir, appearance latent)
       #    - SKIPPED. We have the save rays as in coarse model
       #    - condition_inputs.shape: (device_batch, sum(embedded_dims))
       # 5. Query the fine network
-      #    - fine_raw: {'rgb'  : (device_batch, num_fine_samples, 3)
-      #                 'alpha': (device_batch, num_fine_samples, 1)}
+      #    - fine_raw: {'rgb'  : (device_batch, N, 3)
+      #                 'alpha': (device_batch, N, 1)}
       fine_raw = self.nerf_fine(points_embed, condition=condition_inputs)
       fine_raw = model_utils.noise_regularize(
           self.make_rng('fine'), fine_raw, self.noise_std,
