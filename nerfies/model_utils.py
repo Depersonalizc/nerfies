@@ -91,9 +91,10 @@ def volumetric_rendering(raw,
   Returns:
     rgb: jnp.ndarray(float32), [batch_size, 3].
     exp_depth: jnp.ndarray(float32), [batch_size], expected depth.
-    med_depth: jnp.ndarray(float32), [batch_size], median depth
-    acc: jnp.ndarray(float32), [batch_size], accumulated opacity
-    weights: jnp.ndarray(float32), [batch_size, num_coarse_samples]
+    med_depth: jnp.ndarray(float32), [batch_size], median depth.
+    disp: jnp.ndarray(float), [batch_size], disparity map.
+    acc: jnp.ndarray(float32), [batch_size], accumulated opacity.
+    weights: jnp.ndarray(float32), [batch_size, num_coarse_samples].
   """
   rgb = nn.sigmoid(raw['rgb'])
   sigma = sigma_activation(jnp.squeeze(raw['alpha'], axis=-1))
