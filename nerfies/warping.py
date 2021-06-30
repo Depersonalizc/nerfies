@@ -48,8 +48,10 @@ def create_warp_field(
   v_warp_field_cls = model_utils.vmap_module(
       warp_field_cls,
       num_batch_dims=num_batch_dims,
-      # (points, metadata, alpha, return_jacobian, metadata_encoded).
-      in_axes=(0, 0, None, None, None))
+      #       (points, metadata,
+      #        alpha, metadata_encoded, return_jacobian, return_latent).
+      in_axes=(0, 0, 
+               None, None, None, None))
 
   return v_warp_field_cls(
       num_freqs=num_freqs,
@@ -144,26 +146,13 @@ class AmbientField(nn.Module):
         output_init=self.output_init,
         output_channels=self.ambient_dims)
 
-  def get_ambient(self,
-                  points: jnp.ndarray,
-                  metadata: jnp.ndarray,
-                  alpha: Optional[float] = None,
-                  metadata_encoded: bool = False):
-    points_embed = self.points_encoder(points, alpha=alpha)
-    metadata_embed = (metadata
-                      if metadata_encoded
-                      else self.metadata_encoder(metadata))
-    inputs = jnp.concatenate([points_embed, metadata_embed], axis=-1)
-    ambient_w = self.mlp(inputs)
-
-    return ambient_w
-
   def __call__(self,
                points: jnp.ndarray,
                metadata: jnp.ndarray,
-               alpha: Optional[float] = None,
+               alpha: float = None,
+               metadata_encoded: bool = False,
                return_jacobian: bool = False,
-               metadata_encoded: bool = False):
+               return_latent: bool = False):
     """Predict ambient coordinates w from given points.
 
     Args:
@@ -176,15 +165,20 @@ class AmbientField(nn.Module):
     Returns:
       Ambient coordinates w to feed into the template nerf
     """
-    ambient_w = self.get_ambient(
-        points, metadata, alpha, metadata_encoded)
-
+    points_embed = self.points_encoder(points, alpha=alpha)
+    metadata_embed = (metadata
+                      if metadata_encoded
+                      else self.metadata_encoder(metadata))
+    inputs = jnp.concatenate([points_embed, metadata_embed], axis=-1)
+    ambient_w = self.mlp(inputs)
+    ret = {'ambient_w': ambient_w}
+    if return_latent:
+      ret['latent'] = metadata_embed
     if return_jacobian:
       jac_fn = jax.jacfwd(self.get_ambient, argnums=0)
       jac = jac_fn(points, metadata, alpha, metadata_encoded)
-      return ambient_w, jac
-
-    return ambient_w
+      ret['jacobian'] = jac
+    return ret
 
 
 
@@ -238,27 +232,13 @@ class TranslationField(nn.Module):
         output_init=self.output_init,
         output_channels=output_dims)
 
-  def warp(self,
-           points: jnp.ndarray,
-           metadata: jnp.ndarray,
-           alpha: Optional[float] = None,
-           metadata_encoded: bool = False):
-    points_embed = self.points_encoder(points, alpha=alpha)
-    metadata_embed = (metadata
-                      if metadata_encoded
-                      else self.metadata_encoder(metadata))
-    inputs = jnp.concatenate([points_embed, metadata_embed], axis=-1)
-    translation = self.mlp(inputs)
-    warped_points = points + translation
-
-    return warped_points
-
   def __call__(self,
                points: jnp.ndarray,
                metadata: jnp.ndarray,
-               alpha: Optional[float] = None,
+               alpha: float = None,
+               metadata_encoded: bool = False,
                return_jacobian: bool = False,
-               metadata_encoded: bool = False):
+               return_latent: bool = False):
     """Warp the given points using a warp field.
 
     Args:
@@ -273,15 +253,22 @@ class TranslationField(nn.Module):
       The warped points and the Jacobian of the warp if `return_jacobian` is
         True.
     """
-    warped_points = self.warp(
-        points, metadata, alpha, metadata_encoded)
+    points_embed = self.points_encoder(points, alpha=alpha)
+    metadata_embed = (metadata
+                      if metadata_encoded
+                      else self.metadata_encoder(metadata))
+    inputs = jnp.concatenate([points_embed, metadata_embed], axis=-1)
+    translation = self.mlp(inputs)
+    warped_points = points + translation
 
+    ret = {'warped_points': warped_points}
+    if return_latent:
+      ret['latent'] = metadata_embed
     if return_jacobian:
-      jac_fn = jax.jacfwd(self.warp, argnums=0)
+      jac_fn = jax.jacfwd(self.get_ambient, argnums=0)
       jac = jac_fn(points, metadata, alpha, metadata_encoded)
-      return warped_points, jac
-
-    return warped_points
+      ret['jacobian'] = jac
+    return ret
 
 
 class SE3Field(nn.Module):
@@ -366,11 +353,27 @@ class SE3Field(nn.Module):
     # See https://github.com/google/flax/issues/524.
     self.branches = branches
 
-  def warp(self,
-           points: jnp.ndarray,
-           metadata: jnp.ndarray,
-           alpha: Optional[float] = None,
-           metadata_encoded: bool = False):
+  def __call__(self,
+               points: jnp.ndarray,
+               metadata: jnp.ndarray,
+               alpha: float = None,
+               metadata_encoded: bool = False,
+               return_jacobian: bool = False,
+               return_latent: bool = False):
+    """Warp the given points using a warp field.
+
+    Args:
+      points: the points to warp.
+      metadata: metadata indices if metadata_encoded is False 
+                                 else pre-encoded metadata.
+      alpha: the alpha value for the positional encoding.
+      return_jacobian: if True compute and return the Jacobian of the warp.
+      metadata_encoded: if True assumes the metadata is already encoded.
+
+    Returns:
+      The warped points and the Jacobian of the warp if `return_jacobian` is
+        True.
+    """
     points_embed = self.points_encoder(points, alpha=alpha)
     metadata_embed = (metadata
                       if metadata_encoded
@@ -398,33 +401,12 @@ class SE3Field(nn.Module):
     if self.use_translation:
       warped_points = warped_points + branch_outputs['translation']
 
-    return warped_points
 
-  def __call__(self,
-               points: jnp.ndarray,
-               metadata: jnp.ndarray,
-               alpha: Optional[float] = None,
-               return_jacobian: bool = False,
-               metadata_encoded: bool = False):
-    """Warp the given points using a warp field.
-
-    Args:
-      points: the points to warp.
-      metadata: metadata indices if metadata_encoded is False 
-                                 else pre-encoded metadata.
-      alpha: the alpha value for the positional encoding.
-      return_jacobian: if True compute and return the Jacobian of the warp.
-      metadata_encoded: if True assumes the metadata is already encoded.
-
-    Returns:
-      The warped points and the Jacobian of the warp if `return_jacobian` is
-        True.
-    """
-    warped_points = self.warp(points, metadata, alpha, metadata_encoded)
-
+    ret = {'warped_points': warped_points}
+    if return_latent:
+      ret['latent'] = metadata_embed
     if return_jacobian:
-      jac_fn = jax.jacfwd(self.warp, argnums=0)
+      jac_fn = jax.jacfwd(self.get_ambient, argnums=0)
       jac = jac_fn(points, metadata, alpha, metadata_encoded)
-      return warped_points, jac
-
-    return warped_points
+      ret['jacobian'] = jac
+    return ret
