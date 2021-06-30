@@ -260,17 +260,22 @@ def noise_regularize(key, raw, noise_std, use_stratified_sampling):
 
   Args:
     key: jnp.ndarray(float32), [2,], random number generator.
-    raw: jnp.ndarray(float32), [batch_size, num_coarse_samples, 4].
+    raw: dict(str: jnp.ndarray(float)),
+         {'rgb'  : (device_batch, num_coarse_samples, 3)
+          'alpha': (device_batch, num_coarse_samples, 1)}.
     noise_std: float, std dev of noise added to regularize sigma output.
     use_stratified_sampling: add noise only if use_stratified_sampling is True.
 
   Returns:
-    raw: jnp.ndarray(float32), [batch_size, num_coarse_samples, 4], updated raw.
+    raw: dict(str: jnp.ndarray(float)),
+         {'rgb'  : (device_batch, num_coarse_samples, 3)
+          'alpha': (device_batch, num_coarse_samples, 1)}, updated raw.
   """
   if (noise_std is not None) and noise_std > 0.0 and use_stratified_sampling:
     unused_key, key = random.split(key)
-    noise = random.normal(key, raw[..., 3:4].shape, dtype=raw.dtype) * noise_std
-    raw = jnp.concatenate([raw[..., :3], raw[..., 3:4] + noise], axis=-1)
+    alpha = raw['alpha']
+    noise = random.normal(key, alpha.shape, dtype=raw.dtype) * noise_std
+    raw['alpha'] = alpha + noise
   return raw
 
 
