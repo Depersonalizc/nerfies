@@ -34,6 +34,8 @@ def create_warp_field(
     num_batch_dims: int,
     **kwargs):
   """Factory function for warp fields."""
+
+  field_type = field_type.lower()
   if field_type == 'translation':
     warp_field_cls = TranslationField
   elif field_type == 'se3':
@@ -121,6 +123,7 @@ class AmbientField(nn.Module):
   activation: types.Activation = nn.relu
   hidden_init: types.Initializer = nn.initializers.xavier_uniform()
   output_init: types.Initializer = nn.initializers.normal(stddev=1e-5)
+  ambient_dims: int = 2
 
   def setup(self):
     self.points_encoder = modules.AnnealedSinusoidalEncoder(
@@ -133,14 +136,13 @@ class AmbientField(nn.Module):
     # See https://github.com/google/flax/issues/524.
     # pylint: disable=g-complex-comprehension
     # As per paper, higher dims does not seem to improve performance.
-    ambient_dims = 2  
     self.mlp = MLP(
         width=self.hidden_channels,
         depth=self.depth,
         skips=self.skips,
         hidden_init=self.hidden_init,
         output_init=self.output_init,
-        output_channels=ambient_dims)
+        output_channels=self.ambient_dims)
 
   def get_ambient(self,
                   points: jnp.ndarray,
