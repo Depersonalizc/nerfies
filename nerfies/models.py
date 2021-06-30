@@ -271,8 +271,9 @@ class NerfModel(nn.Module):
         pass
       else:  # use warp latent 
         ambient_ret = self.ambient_field(
-            points, warp_latent,              # vmapped
-            True, warp_alpha, False, False)   # TODO: Should have own alpha 
+            points, warp_latent,  # vmapped
+            warp_alpha,           # TODO: Should have own alpha 
+            True, False, False)   
       ambient_w = ambient_ret['ambient_w']
       print(ambient_w.shape)
 
@@ -367,8 +368,8 @@ class NerfModel(nn.Module):
             shape=(*points.shape[:2], metadata_channels))
         warp_ret = self.warp_field(
             points, warp_metadata,  # vmapped
-            metadata_encoded, warp_alpha,
-            False, self.warp_ret_latent)
+            warp_alpha,
+            metadata_encoded, False, self.warp_ret_latent)
         points = warp_ret['warped_points']
       if self.warp_ret_latent:
         warp_latent = warp_ret['latent']
@@ -379,8 +380,9 @@ class NerfModel(nn.Module):
           pass
         else:  # use warp latent 
           ambient_ret = self.ambient_field(
-              points, warp_latent,    # vmapped
-              True, warp_alpha)       # TODO: Should have own alpha 
+              points, warp_latent,  # vmapped
+              warp_alpha,
+              True, False, False)   # TODO: Should have own alpha 
         ambient_w = ambient_ret['ambient_w']
         print(ambient_w.shape)
       
@@ -524,8 +526,6 @@ def nerf(key,
       num_ambient_features=config.num_ambient_features,
       
   )
-
-  print(model)
 
   init_rays_dict = {
       'origins': jnp.ones((batch_size, 3), jnp.float32),
