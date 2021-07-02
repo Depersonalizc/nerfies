@@ -73,11 +73,11 @@ def render_image(state, rays_dict, model_fn, device_count, rng, chunk=8192):
         chunk_rays_dict)
     chunk_rays_dict = utils.shard(chunk_rays_dict, device_count)
     model_out = model_fn(
-        key_0,
-        key_1,
-        state.optimizer.target['model'],
+        key_0, key_1, state.optimizer.target['model'],
         chunk_rays_dict,
-        state.warp_alpha)
+        state.warp_alpha,
+        state.ambient_alpha,
+        state.ambient_T_alpha)
     ret_key = 'fine' if 'fine' in model_out else 'coarse'
     rgb.append(utils.unshard(model_out[ret_key]['rgb'][0], padding))
     depth_exp.append(utils.unshard(model_out[ret_key]['depth'][0], padding))
