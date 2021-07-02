@@ -179,6 +179,11 @@ class NerfModel(nn.Module):
     if self.use_ambient:
       assert self.sep_ambient_latent or self.use_warp, \
         'Must use_warp if ambient field does not have its own latent.'
+      self.ambient_encoder = model_utils.vmap_module(
+          modules.AnnealedSinusoidalEncoder, 
+          in_axes=(0, None), # (points, alpha)
+          num_batch_dims=2)( # B, S
+              num_freqs=1, use_identity=False) # TODO: try more freqs!
       create_ambient_field = partial(
           warping.create_warp_field,
           field_type='ambient',
@@ -201,6 +206,8 @@ class NerfModel(nn.Module):
       self,
       rays_dict: Dict[str, Any],
       warp_alpha: float,
+      ambient_alpha: float,
+      ambient_T_alpha: float,
       metadata_encoded: bool = False,
       use_warp: bool = True,
   ):
@@ -215,10 +222,11 @@ class NerfModel(nn.Module):
           - warping
           - appearance
           Each has shape (device_batch, 1)
-      warp_alpha (float): the alpha for the positional encoding.
+      warp_alpha (float): the alpha for the positional encoding for warp field input.
+      ambient_alpha (float): the alpha for the positional encoding for ambient field input.
+      ambient_T_alpha (float): ambient-to-template PE alpha.
       metadata_encoded (Bool): if True, assume the metadata is already encoded.
       use_warp (Bool): if True use the warp field (if also enabled in the model).
-      deterministic (Bool): whether evaluation should be deterministic.
 
     Returns:
       ret: list, [(rgb, disp, acc), (rgb_coarse, disp_coarse, acc_coarse)]
@@ -259,29 +267,40 @@ class NerfModel(nn.Module):
           metadata_encoded,
           self.use_warp_jacobian,
           self.warp_ret_latent)
-      points = warp_ret['warped_points']
+      warp_points = warp_ret['warped_points']
       if self.use_warp_jacobian:
         warp_jacobian = warp_ret['jacobian']
       if self.warp_ret_latent:
         warp_latent = warp_ret['latent']
+    else:
+      warp_points = points
+    # 2.5. Apply postional encoding to (warpped) points.
+    #    - points_embed.shape: (device_batch, num_coarse_samples, embedded_dims)
+    #    - point_encoder vmapped to first 2 dims (device_batch, num_coarse_samples)
+    points_embed = self.point_encoder(warp_points)
 
-    # 2.5 Predict ambient coordinates.
-    #     - ambient_w should have shape (device_batch, num_coarse_samples, 2)
+
+    # 3. Predict ambient coordinates.
+    #    - ambient_w.shape (device_batch, num_coarse_samples, 2)
     if self.use_ambient:
       if self.sep_ambient_latent: # TODO: use own embedding
         pass
       else:  # use warp latent 
         ambient_ret = self.ambient_field(
-            points, warp_latent,  # vmapped
-            warp_alpha,           # TODO: Should have own alpha 
-            True, False, False)   
+            points if True else warp_points, warp_latent,  # vmapped
+            ambient_alpha,
+            True, False, False)
       ambient_w = ambient_ret['ambient_w']
+      # 3.5. Apply postional encoding to ambient coordinates.
+      #    - ambient_w_embed.shape: (device_batch, num_coarse_samples, embedded_dims)
+      #    - ambient_encoder vmapped to first 2 dims (device_batch, num_coarse_samples)
+      ambient_w_embed = self.ambient_encoder(ambient_w, ambient_T_alpha)
+      # Concat ambient dim to points
+      points_embed = jnp.concatenate([points_embed, 
+                                      ambient_w_embed], axis=-1)
 
-    # 3. Apply postional encoding to (warpped) points.
-    #    - points_embed.shape: (device_batch, num_coarse_samples, embedded_dims)
-    #    - point_endcoder vmapped to first 2 dims (device_batch, num_coarse_samples)
-    points_embed = self.point_encoder(points)
-    
+
+
     # 4. Append condition inputs (encoded viewdir, appearance latent)
     #    - Each condition has shape (device_batch, embedded_dims)
     #    - condition_inputs.shape: (device_batch, sum(embedded_dims))
@@ -359,7 +378,7 @@ class NerfModel(nn.Module):
           self.num_fine_samples,
           self.use_stratified_sampling,
       )
-      
+
       # 2. Apply warping to points.
       #    - points.shape: (device_batch, N, 3)
       if self.use_warp and use_warp:
@@ -371,25 +390,34 @@ class NerfModel(nn.Module):
             points, warp_metadata,  # vmapped
             warp_alpha,
             metadata_encoded, False, self.warp_ret_latent)
-        points = warp_ret['warped_points']
-      if self.warp_ret_latent:
-        warp_latent = warp_ret['latent']
-    
-      # 2.5 Predict ambient coordinates.
+        warp_points = warp_ret['warped_points']
+        if self.warp_ret_latent:
+          warp_latent = warp_ret['latent']
+      else:
+        warp_points = points
+      # 2.5. Apply postional encoding to (warpped) points.
+      #    - points_embed.shape: (device_batch, N, embedded_dims)
+      #    - point_encoder vmapped to first 2 dims (device_batch, N)
+      points_embed = self.point_encoder(warp_points)
+      
+      # 3. Predict ambient coordinates.
+      #    - ambient_w.shape (device_batch, N, 2)
       if self.use_ambient:
         if self.sep_ambient_latent: # TODO: use own embedding
           pass
         else:  # use warp latent 
           ambient_ret = self.ambient_field(
-              points, warp_latent,  # vmapped
-              warp_alpha,
-              True, False, False)   # TODO: Should have own alpha 
+              points if True else warp_points, warp_latent,  # vmapped
+              ambient_alpha,
+              True, False, False)
         ambient_w = ambient_ret['ambient_w']
-      
-      # 3. Apply postional encoding to (warpped) points.
-      #    - points_embed.shape: (device_batch, N, embedded_dims)
-      #    - point_endcoder vmapped to first 2 dims (device_batch, N)
-      points_embed = self.point_encoder(points)
+        # 3.5. Apply postional encoding to ambient coordinates.
+        #    - ambient_w_embed.shape: (device_batch, N, embedded_dims)
+        #    - ambient_encoder vmapped to first 2 dims (device_batch, N)
+        ambient_w_embed = self.ambient_encoder(ambient_w, ambient_T_alpha)
+        # Concat ambient dim to points
+        points_embed = jnp.concatenate([points_embed, 
+                                        ambient_w_embed], axis=-1)
 
       # 4. Append condition inputs (encoded viewdir, appearance latent)
       #    - SKIPPED. We have the save rays as in coarse model
@@ -550,7 +578,10 @@ def nerf(key,
   params = model.init({
       'params': key,
       'coarse': key1,
-      'fine': key2
-  }, init_rays_dict, warp_alpha=0.0)['params']
+      'fine': key2}, 
+      init_rays_dict, 
+      warp_alpha=0.0,
+      ambient_alpha=0.0,
+      ambient_T_alpha=0.0)['params']
 
   return model, params
