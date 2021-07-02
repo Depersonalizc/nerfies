@@ -143,10 +143,10 @@ class TrainConfig:
       'type': 'exponential',
       'initial_value': 0.001,
       'final_value': 0.0001,
-      'num_steps': 1000000,
+      'num_steps': 100000,
   })
   # The maximum number of training steps.
-  max_steps: int = 1000000
+  max_steps: int = 100000
 
   # The start value of the warp alpha.
   warp_alpha_schedule: ScheduleDef = FrozenDict({
@@ -155,6 +155,20 @@ class TrainConfig:
       'final_value': 8.0,
       'num_steps': 80000,
   })
+  ambient_alpha_schedule: ScheduleDef = FrozenDict({
+      'type': 'linear',
+      'initial_value': 0.0,
+      'final_value': 6.0,
+      'num_steps': 80000,
+  })
+  ambient_T_alpha_schedule: ScheduleDef = FrozenDict({
+    'type': 'shifted_linear',
+    'initial_value': 0.0,
+    'final_value': 1.0,
+    'start_step': 1000,
+    'end_step': 80000,
+  })
+
 
   # Whether to use the elastic regularization loss.
   use_elastic_loss: bool = False
