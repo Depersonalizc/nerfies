@@ -26,6 +26,8 @@ import jax.numpy as jnp
 class TrainState:
   optimizer: optim.Optimizer
   warp_alpha: jnp.ndarray = 0.0
+  ambient_alpha: jnp.ndarray = 0.0
+  ambient_T_alpha: jnp.ndarray = 0.0
 
 
 def sample_along_rays(key, origins, directions, num_coarse_samples, near, far,
