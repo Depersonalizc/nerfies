@@ -408,7 +408,7 @@ class NerfModel(nn.Module):
           pass
         else:  # use warp latent 
           ambient_ret = self.ambient_field(
-              points if True else warp_points, warp_latent,  # vmapped
+              warp_points if self.warp_to_ambient else points,  # vmapped
               ambient_alpha,
               True, False, False)
         ambient_w = ambient_ret['ambient_w']
