@@ -178,6 +178,28 @@ class PiecewiseSchedule(Schedule):
     base_idx = self.milestones[idx - 1] if idx >= 1 else 0
     return schedule.get(step - base_idx)
 
+@gin.configurable()
+class ShiftedLinearSchedule(Schedule):
+  """Stay at initial_value up to @start_step, 
+     move linearly to final_value until @end_step and stay."""
+
+  def __init__(self, initial_value, final_value, start_step, end_step):
+    super().__init__()
+    self.initial_value = initial_value
+    self.final_value = final_value
+    self.start_step = start_step
+    self.end_step = end_step
+    self.inter_steps = self.end_step - self.start_step
+
+  def get(self, step):
+    """Get the value for the given step."""
+    if self.inter_steps == 0:
+      return jnp.full_like(step, self.final_value, dtype=jnp.float32)
+    if 
+    alpha = (step - self.start_step) / self.inter_steps
+    alpha = jnp.clip(alpha, 0.0, 1.0)
+    return (1.0 - alpha) * self.initial_value + alpha * self.final_value
+
 
 SCHEDULE_MAP = {
     'constant': ConstantSchedule,
@@ -186,4 +208,5 @@ SCHEDULE_MAP = {
     'cosine_easing': CosineEasingSchedule,
     'step': StepSchedule,
     'piecewise': PiecewiseSchedule,
+    'shifted_linear': ShiftedLinearSchedule
 }
