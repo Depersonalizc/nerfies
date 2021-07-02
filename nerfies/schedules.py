@@ -195,7 +195,6 @@ class ShiftedLinearSchedule(Schedule):
     """Get the value for the given step."""
     if self.inter_steps == 0:
       return jnp.full_like(step, self.final_value, dtype=jnp.float32)
-    if 
     alpha = (step - self.start_step) / self.inter_steps
     alpha = jnp.clip(alpha, 0.0, 1.0)
     return (1.0 - alpha) * self.initial_value + alpha * self.final_value
