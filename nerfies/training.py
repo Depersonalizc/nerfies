@@ -97,7 +97,9 @@ def compute_background_loss(
       **model.warp_kwargs)
   warped_points = warp_field.apply(
       {'params': params['warp_field']},
-      points, metadata, state.warp_alpha, False, False)
+      points, metadata, 
+      state.warp_alpha, 
+      False, False, False)['warped_points']
   sq_residual = jnp.sum((warped_points - points)**2, axis=-1)
   loss = scale * utils.general_loss_with_squared_residual(
       sq_residual, alpha=alpha, scale=scale)
@@ -177,6 +179,8 @@ def train_step(model: models.NerfModel,
     ret = model.apply({'params': params['model']},
                       batch,
                       warp_alpha=state.warp_alpha,
+                      ambient_alpha=state.ambient_alpha,
+                      ambient_T_alpha=state.ambient_T_alpha,
                       rngs={
                           'fine': fine_key,
                           'coarse': coarse_key
