@@ -143,10 +143,10 @@ class TrainConfig:
       'type': 'exponential',
       'initial_value': 0.001,
       'final_value': 0.0001,
-      'num_steps': 1000000,
+      'num_steps': 100000,
   })
   # The maximum number of training steps.
-  max_steps: int = 1000000
+  max_steps: int = 100000
 
   # The start value of the warp alpha.
   warp_alpha_schedule: ScheduleDef = FrozenDict({
