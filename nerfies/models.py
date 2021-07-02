@@ -120,6 +120,7 @@ class NerfModel(nn.Module):
   use_warp: bool = False
   use_ambient: bool = False
   sep_ambient_latent: bool = False  # If True use seperate latent for ambient field
+  warp_to_ambient: bool = True  # If True feed warped points to ambient MLP. Original paper: False
   use_warp_jacobian: bool = False
   use_weights: bool = False
   warp_kwargs: Mapping[str, Any] = FrozenDict()
@@ -196,7 +197,7 @@ class NerfModel(nn.Module):
             num_embeddings=self.num_ambient_embeddings,
             num_features=self.num_ambient_features)
       else:
-        self.ambient_field = create_ambient_field(
+        self.ambient_field = create_ambient_field(  # first do this
             num_embeddings=self.num_warp_embeddings,
             num_features=self.num_warp_features)
       # Whether the warp field should return latent
@@ -284,10 +285,10 @@ class NerfModel(nn.Module):
     #    - ambient_w.shape (device_batch, num_coarse_samples, 2)
     if self.use_ambient:
       if self.sep_ambient_latent: # TODO: use own embedding
-        pass
+        assert False, 'Not implemented!'
       else:  # use warp latent 
         ambient_ret = self.ambient_field(
-            points if True else warp_points, warp_latent,  # vmapped
+            warp_points if self.warp_to_ambient else points, warp_latent,  # vmapped
             ambient_alpha,
             True, False, False)
       ambient_w = ambient_ret['ambient_w']
