@@ -93,6 +93,8 @@ class ModelConfig:
 
   # Whether to use the ambient field.
   use_ambient: bool = False
+  # Whether to feed warped points to ambient field.
+  warp_to_ambient: bool = False
   # The number of frequencies for the ambient field.
   # x ------> gamma(x) ------> w
   num_ambient_freqs: int = 6
