@@ -120,7 +120,7 @@ class NerfModel(nn.Module):
   use_warp: bool = False
   use_ambient: bool = False
   sep_ambient_latent: bool = False  # If True use seperate latent for ambient field
-  warp_to_ambient: bool = True  # If True feed warped points to ambient MLP. Original paper: False
+  warp_to_ambient: bool = False  # If True feed warped points to ambient MLP. Original paper: False
   use_warp_jacobian: bool = False
   use_weights: bool = False
   warp_kwargs: Mapping[str, Any] = FrozenDict()
@@ -539,6 +539,7 @@ def nerf(key,
       warp_field_type=config.warp_field_type,
       warp_kwargs=config.warp_kwargs,
       use_ambient=config.use_ambient,
+      warp_to_ambient=config.warp_to_ambient,
       num_ambient_dims=config.num_ambient_dims,
       ambient_kwargs=config.ambient_kwargs,
 
